@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.room.Room
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +57,10 @@ fun App(db: AppDb) {
                         1 -> HealthTab(s, events, onAdd = { tag, prod, days ->
                             scope.launch {
                                 val today = LocalDate.now().toEpochDay()
-                                db.health().insert(HealthEvent(animalTag = tag, product = prod, eventEpochDay = today, remindEpochDay = today + days))
+                                val remind = today + days
+                                db.health().insert(HealthEvent(animalTag = tag, product = prod, eventEpochDay = today, remindEpochDay = remind))
+                                val trigger = LocalDate.ofEpochDay(remind).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                                Reminder.schedule(applicationContext, "$tag • $prod", trigger)
                                 refresh()
                             }
                         })
