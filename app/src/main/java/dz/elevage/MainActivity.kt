@@ -21,12 +21,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val db = Room.databaseBuilder(applicationContext, AppDb::class.java, "elevagedz.db").build()
-        setContent { App(db) }
+        val appCtx = applicationContext
+        setContent { App(db, appCtx) }
     }
 }
 
 @Composable
-fun App(db: AppDb) {
+fun App(db: AppDb, appCtx: android.content.Context) {
     var lang by remember { mutableStateOf("fr") }
     val s = if (lang == "ar") Strings.ar else Strings.fr
     CompositionLocalProvider(LocalLayoutDirection provides if (lang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr) {
@@ -60,12 +61,17 @@ fun App(db: AppDb) {
                                 val remind = today + days
                                 db.health().insert(HealthEvent(animalTag = tag, product = prod, eventEpochDay = today, remindEpochDay = remind))
                                 val trigger = LocalDate.ofEpochDay(remind).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                                Reminder.schedule(applicationContext, "$tag • $prod", trigger)
+                                Reminder.schedule(appCtx, "$tag • $prod", trigger)
                                 refresh()
                             }
                         })
                         2 -> FeedTab(s, feeds, onAdd = { label, qty, price ->
-                            scope.launch { db.feed().insert(FeedCost(label = label, qtyKg = qty, priceDzdPerKg = price, dayEpoch = LocalDate.now().toEpochDay)); refresh() } })
+                            scope.launch {
+                                val day = LocalDate.now().toEpochDay()
+                                db.feed().insert(FeedCost(label = label, qtyKg = qty, priceDzdPerKg = price, dayEpoch = day))
+                                refresh()
+                            }
+                        })
                         else -> SettingsTab(s, lang, onLang = { lang = it })
                     }
                 }
