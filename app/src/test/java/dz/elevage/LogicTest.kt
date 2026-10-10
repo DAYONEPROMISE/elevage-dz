@@ -26,5 +26,9 @@ class LogicTest {
     @Test fun stringsComplete() {
         assertTrue(Strings.fr.animals.isNotBlank())
         assertTrue(Strings.ar.animals.isNotBlank())
+        assertTrue(Strings.fr.theme.isNotBlank())
+        assertTrue(Strings.ar.theme.isNotBlank())
+        assertTrue(Strings.fr.thDark.isNotBlank())
+        assertTrue(Strings.ar.thDark.isNotBlank())
     }
 }

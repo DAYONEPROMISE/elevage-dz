@@ -3,13 +3,22 @@ package dz.elevage
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Grass
+import androidx.compose.material.icons.filled.MedicalServices
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.room.Room
@@ -20,6 +29,7 @@ import java.time.ZoneId
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         val db = Room.databaseBuilder(applicationContext, AppDb::class.java, "elevagedz.db").build()
         val appCtx = applicationContext
         setContent { App(db, appCtx) }
@@ -29,9 +39,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App(db: AppDb, appCtx: android.content.Context) {
     var lang by remember { mutableStateOf("fr") }
+    var theme by remember { mutableStateOf(ThemeMode.SYSTEM) }
     val s = if (lang == "ar") Strings.ar else Strings.fr
     CompositionLocalProvider(LocalLayoutDirection provides if (lang == "ar") LayoutDirection.Rtl else LayoutDirection.Ltr) {
-        MaterialTheme {
+        ElevageTheme(theme) {
             var tab by remember { mutableStateOf(0) }
             val scope = rememberCoroutineScope()
             var animals by remember { mutableStateOf(listOf<Animal>()) }
@@ -43,36 +54,53 @@ fun App(db: AppDb, appCtx: android.content.Context) {
                 feeds = db.feed().all()
             }
             LaunchedEffect(Unit) { refresh() }
+            val titles = listOf(s.animals, s.health, s.feed, s.settings)
+            val icons = listOf(Icons.Filled.Pets, Icons.Filled.MedicalServices, Icons.Filled.Grass, Icons.Filled.Settings)
             Scaffold(
+                topBar = {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    TopAppBar(title = { Text(titles[tab]) })
+                },
                 bottomBar = {
                     NavigationBar {
-                        listOf(s.animals, s.health, s.feed, s.settings).forEachIndexed { i, t ->
-                            NavigationBarItem(selected = tab == i, onClick = { tab = i }, label = { Text(t) }, icon = {})
+                        titles.forEachIndexed { i, t ->
+                            NavigationBarItem(
+                                selected = tab == i,
+                                onClick = { tab = i },
+                                label = { Text(t) },
+                                icon = { Icon(icons[i], contentDescription = t) }
+                            )
                         }
                     }
                 }
             ) { pad ->
-                Box(Modifier.padding(pad).padding(12.dp)) {
-                    when (tab) {
-                        0 -> AnimalsTab(s, animals, onAdd = { tag, sp -> scope.launch { db.animals().insert(Animal(tag = tag, species = sp)); refresh() } })
-                        1 -> HealthTab(s, events, onAdd = { tag, prod, days ->
-                            scope.launch {
-                                val today = LocalDate.now().toEpochDay()
-                                val remind = today + days
-                                db.health().insert(HealthEvent(animalTag = tag, product = prod, eventEpochDay = today, remindEpochDay = remind))
-                                val trigger = LocalDate.ofEpochDay(remind).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                                Reminder.schedule(appCtx, "$tag • $prod", trigger)
-                                refresh()
-                            }
-                        })
-                        2 -> FeedTab(s, feeds, onAdd = { label, qty, price ->
-                            scope.launch {
-                                val day = LocalDate.now().toEpochDay()
-                                db.feed().insert(FeedCost(label = label, qtyKg = qty, priceDzdPerKg = price, dayEpoch = day))
-                                refresh()
-                            }
-                        })
-                        else -> SettingsTab(s, lang, onLang = { lang = it })
+                BoxWithConstraints(Modifier.padding(pad).fillMaxSize()) {
+                    // Adaptive: cap content width on tablets/foldables, center it.
+                    val wide = maxWidth > 640.dp
+                    val contentMod = if (wide) Modifier.widthIn(max = 640.dp).fillMaxWidth()
+                        else Modifier.fillMaxWidth()
+                    Box(Modifier.align(Alignment.TopCenter).then(contentMod).padding(12.dp)) {
+                        when (tab) {
+                            0 -> AnimalsTab(s, animals, onAdd = { tag, sp -> scope.launch { db.animals().insert(Animal(tag = tag, species = sp)); refresh() } })
+                            1 -> HealthTab(s, events, onAdd = { tag, prod, days ->
+                                scope.launch {
+                                    val today = LocalDate.now().toEpochDay()
+                                    val remind = today + days
+                                    db.health().insert(HealthEvent(animalTag = tag, product = prod, eventEpochDay = today, remindEpochDay = remind))
+                                    val trigger = LocalDate.ofEpochDay(remind).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                                    Reminder.schedule(appCtx, "$tag • $prod", trigger)
+                                    refresh()
+                                }
+                            })
+                            2 -> FeedTab(s, feeds, onAdd = { label, qty, price ->
+                                scope.launch {
+                                    val day = LocalDate.now().toEpochDay()
+                                    db.feed().insert(FeedCost(label = label, qtyKg = qty, priceDzdPerKg = price, dayEpoch = day))
+                                    refresh()
+                                }
+                            })
+                            else -> SettingsTab(s, lang, onLang = { lang = it }, theme, onTheme = { theme = it })
+                        }
                     }
                 }
             }
@@ -135,7 +163,7 @@ fun FeedTab(s: Strings.S, feeds: List<FeedCost>, onAdd: (String, Double, Double)
 }
 
 @Composable
-fun SettingsTab(s: Strings.S, lang: String, onLang: (String) -> Unit) {
+fun SettingsTab(s: Strings.S, lang: String, onLang: (String) -> Unit, theme: ThemeMode, onTheme: (ThemeMode) -> Unit) {
     Column {
         Text(s.language, style = MaterialTheme.typography.titleMedium)
         Row {
@@ -143,6 +171,18 @@ fun SettingsTab(s: Strings.S, lang: String, onLang: (String) -> Unit) {
             Spacer(Modifier.width(8.dp))
             Button(onClick = { onLang("ar") }, enabled = lang != "ar") { Text("العربية") }
         }
-        Text(s.offlineNote, modifier = Modifier.padding(top = 12.dp))
+        Text(s.theme, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+        Row {
+            Button(onClick = { onTheme(ThemeMode.SYSTEM) }, enabled = theme != ThemeMode.SYSTEM) { Text(s.thSystem) }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = { onTheme(ThemeMode.LIGHT) }, enabled = theme != ThemeMode.LIGHT) { Text(s.thLight) }
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = { onTheme(ThemeMode.DARK) }, enabled = theme != ThemeMode.DARK) { Text(s.thDark) }
+        }
+        Text(
+            s.offlineNote,
+            modifier = Modifier.padding(top = 12.dp)
+                .semantics { contentDescription = s.offlineNote }
+        )
     }
 }
