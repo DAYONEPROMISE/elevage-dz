@@ -1,6 +1,8 @@
 .gradle/
+.gradle-home/
 build/
 app/build/
 *.apk
 local.properties
+build-*.log
 
